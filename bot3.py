@@ -58,20 +58,29 @@ async def store(ctx, title: str, username: str, password: str):
 # Command to fetch all entries globally
 @bot.command()
 async def fetch_all(ctx):
-    try:
-        # Fetch all entries in the database
-        entries = list(users.find())
-        if entries:
-            response = "Stored entries:\n"
-            for entry in entries:
-                # Use 'Unknown' if 'author' field is missing
-                author = entry.get('author', 'Unknown')
-                response += f"**Title:** {entry['title']}, **Username:** {entry['username']}, **Password:** {entry['password']}, **Timestamp:** {entry['timestamp']}, **Author:** {author}\n"
-            await ctx.send(response)
-        else:
-            await ctx.send("No data has been stored yet.")
-    except Exception as e:
-        await ctx.send(f"An error occurred while fetching data: {str(e)}")
+    # Check if the user is an admin
+    if ctx.author.guild_permissions.administrator:  # Admin check
+        try:
+            # Fetch all entries in the database
+            entries = list(users.find())
+            if entries:
+                response = "Stored entries:\n"
+                for entry in entries:
+                    # Use 'Unknown' if fields are missing
+                    title = entry.get('title', 'Unknown')
+                    username = entry.get('username', 'Unknown')
+                    password = entry.get('password', 'Unknown')
+                    timestamp = entry.get('timestamp', 'Unknown')
+                    author = entry.get('author', 'Unknown')
+                    response += f"**Title:** {title}, **Username:** {username}, **Password:** {password}, **Timestamp:** {timestamp}, **Author:** {author}\n"
+                await ctx.send(response)
+            else:
+                await ctx.send("No data has been stored yet.")
+        except Exception as e:
+            await ctx.send(f"An error occurred while fetching data: {str(e)}")
+    else:
+        await ctx.send("You do not have permission to use this command.")
+
 
 # Command to fetch a specific entry by title globally
 @bot.command()
@@ -95,16 +104,39 @@ async def fetch(ctx, title: str):
 @bot.command()
 async def delete(ctx, title: str):
     try:
-        # Delete a specific entry by title with case-sensitive collation
-        result = users.delete_one(
-            {"title": title},
-            collation={"locale": "en", "strength": 3}
-        )
-        if result.deleted_count > 0:
-            await ctx.send(f"Data with title '{title}' deleted successfully!")
+        # Check if the user is the author or an admin
+        entry = users.find_one({"title": title})
+        if entry:
+            # Check if the user is the author of the entry or an admin
+            if entry["author"] == ctx.author.name or ctx.author.guild_permissions.administrator:
+                # Delete the specific entry by title
+                result = users.delete_one({"title": title})
+                if result.deleted_count > 0:
+                    await ctx.send(f"Data with title '{title}' deleted successfully!")
+                else:
+                    await ctx.send(f"No data found for title '{title}'.")
+            else:
+                await ctx.send("You do not have permission to delete this entry.")
         else:
             await ctx.send(f"No data found for title '{title}'.")
     except Exception as e:
         await ctx.send(f"An error occurred while deleting data: {str(e)}")
+
+#delete_all for admin only
+@bot.command()
+async def delete_all(ctx):
+    # Check if the user is an admin
+    if ctx.author.guild_permissions.administrator:  # Admin check
+        try:
+            # Delete all entries from the 'user' collection
+            result = users.delete_many({})
+            if result.deleted_count > 0:
+                await ctx.send(f"All data has been deleted successfully! ({result.deleted_count} entries)")
+            else:
+                await ctx.send("No data to delete.")
+        except Exception as e:
+            await ctx.send(f"An error occurred while deleting data: {str(e)}")
+    else:
+        await ctx.send("You do not have permission to use this command.")
 
 bot.run(DISCORD_TOKEN)
