@@ -34,18 +34,17 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 async def on_ready():
     print(f"Bot logged in as {bot.user}")
 
-# Command to store user data with unique entry ID
+# Command to store data globally
 @bot.command()
 async def store(ctx, title: str, username: str, password: str):
-    admin_id = str(ctx.author.id)  # Admin's Discord ID
     timestamp = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
-    entry_id = f"{admin_id}_{timestamp}"  # Unique entry ID
+    entry_id = f"{ctx.author.id}_{timestamp}"  # Unique entry ID
 
     try:
-        # Insert user data into MongoDB
+        # Insert data into MongoDB
         user_data = {
             "entry_id": entry_id,
-            "admin_id": admin_id,
+            "author": ctx.author.name,
             "title": title,
             "username": username,
             "password": password,
@@ -56,51 +55,49 @@ async def store(ctx, title: str, username: str, password: str):
     except Exception as e:
         await ctx.send(f"An error occurred while storing data: {str(e)}")
 
-# Command to fetch all entries for an admin
+# Command to fetch all entries globally
 @bot.command()
 async def fetch_all(ctx):
-    admin_id = str(ctx.author.id)
-
     try:
-        # Fetch all entries for the admin
-        entries = list(users.find({"admin_id": admin_id}))
+        # Fetch all entries in the database
+        entries = list(users.find())
         if entries:
-            response = "Your stored entries:\n"
+            response = "Stored entries:\n"
             for entry in entries:
-                response += f"**Title:** {entry['title']}, **Username:** {entry['username']}, **Password:** {entry['password']}, **Timestamp:** {entry['timestamp']}\n"
+                # Use 'Unknown' if 'author' field is missing
+                author = entry.get('author', 'Unknown')
+                response += f"**Title:** {entry['title']}, **Username:** {entry['username']}, **Password:** {entry['password']}, **Timestamp:** {entry['timestamp']}, **Author:** {author}\n"
             await ctx.send(response)
         else:
-            await ctx.send("No data found for you.")
+            await ctx.send("No data has been stored yet.")
     except Exception as e:
         await ctx.send(f"An error occurred while fetching data: {str(e)}")
 
-# Command to fetch a specific entry by title
+# Command to fetch a specific entry by title globally
 @bot.command()
 async def fetch(ctx, title: str):
-    admin_id = str(ctx.author.id)
-
     try:
         # Fetch a specific entry by title with case-sensitive collation
         entry = users.find_one(
-            {"admin_id": admin_id, "title": title},
+            {"title": title},
             collation={"locale": "en", "strength": 3}
         )
         if entry:
-            await ctx.send(f"**Title:** {entry['title']}, **Username:** {entry['username']}, **Password:** {entry['password']}, **Timestamp:** {entry['timestamp']}")
+            # Use 'Unknown' if 'author' field is missing
+            author = entry.get('author', 'Unknown')
+            await ctx.send(f"**Title:** {entry['title']}, **Username:** {entry['username']}, **Password:** {entry['password']}, **Timestamp:** {entry['timestamp']}, **Author:** {author}")
         else:
             await ctx.send(f"No data found for title '{title}'.")
     except Exception as e:
         await ctx.send(f"An error occurred while fetching data: {str(e)}")
 
-# Command to delete a specific entry by title
+# Command to delete a specific entry by title globally
 @bot.command()
 async def delete(ctx, title: str):
-    admin_id = str(ctx.author.id)
-
     try:
         # Delete a specific entry by title with case-sensitive collation
         result = users.delete_one(
-            {"admin_id": admin_id, "title": title},
+            {"title": title},
             collation={"locale": "en", "strength": 3}
         )
         if result.deleted_count > 0:
