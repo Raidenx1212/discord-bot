@@ -48,35 +48,48 @@ def has_role(role_name):
 @bot.command()
 @has_role("bot access")
 async def store(ctx, title: str):
-    """Stores data securely via DM, checks if user already exists."""
+    """Stores data securely via DM, preventing duplicate entries."""
     try:
-        # Check if the user already has an entry for the given title in the same server
+        # Check if an entry already exists for this user and title in the server
         existing_entry = users.find_one(
-            {"server_id": str(ctx.guild.id), "author_id": str(ctx.author.id), "title": title}
+            {"server_id": str(ctx.guild.id), "title": title},
+            collation={"locale": "en", "strength": 2}  # Case-insensitive match
         )
 
         if existing_entry:
-            # If an entry exists, notify the user that the data already exists
-            await ctx.send(f"User data with the title '{title}' already exists.")
-            return  # Exit the command if the data already exists
-        
-        # Ask the user for the username and password in a DM
+            await ctx.author.send(f"An entry with the title '{title}' already exists. Please use a different title.")
+            await ctx.send(f"@{ctx.author.name}, the title '{title}' is already in use. Please check your DMs.")
+            return
+
+        # Send a DM to the user asking for the username and password
         await ctx.author.send(f"To store data for the title '{title}', please provide the username.")
-        
+
         def check_dm(msg):
             return msg.author == ctx.author and isinstance(msg.channel, discord.DMChannel)
-        
+
         # Wait for the username in DM
-        username_msg = await bot.wait_for("message", check=check_dm, timeout=30.0)
+        try:
+            username_msg = await bot.wait_for("message", check=check_dm, timeout=30.0)
+        except asyncio.TimeoutError:
+            await ctx.author.send("You took too long to respond. Please try the command again.")
+            await ctx.send(f"@{ctx.author.name}, you took too long to respond. Please try the command again.")
+            return
+
         username = username_msg.content
 
+        # Ask for the password
         await ctx.author.send("Now, please provide the password.")
-        
-        # Wait for the password in DM
-        password_msg = await bot.wait_for("message", check=check_dm, timeout=30.0)
+
+        try:
+            password_msg = await bot.wait_for("message", check=check_dm, timeout=30.0)
+        except asyncio.TimeoutError:
+            await ctx.author.send("You took too long to respond. Please try the command again.")
+            await ctx.send(f"@{ctx.author.name}, you took too long to respond. Please try the command again.")
+            return
+
         password = password_msg.content
 
-        # Store the data in MongoDB
+        # Prepare the data for storage
         timestamp = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
         entry_id = f"{ctx.guild.id}_{ctx.author.id}_{timestamp}"  # Unique entry ID
 
@@ -90,58 +103,92 @@ async def store(ctx, title: str):
             "password": password,
             "timestamp": timestamp
         }
+
+        # Insert the data into MongoDB
         users.insert_one(user_data)
 
-        await ctx.author.send(f"Your data for title '{title}' has been securely stored!")
+        # Notify the user
+        await ctx.author.send(f"Your data for the title '{title}' has been securely stored!")
         await ctx.send(f"@{ctx.author.name}, your data has been securely stored. Check your DMs for confirmation!")
+
     except discord.errors.Forbidden:
         await ctx.send("I couldn't send you a DM. Please enable DMs and try again.")
     except Exception as e:
         await ctx.send(f"An error occurred while storing data: {str(e)}")
 
+
         
 #update
-
 @bot.command()
 @has_role("bot access")
-async def update(ctx, title: str, username: str = None, password: str = None):
-    """Updates user credentials (username or password) if the entry exists."""
+async def update(ctx, title: str):
+    """Allows users to update their stored data securely."""
     try:
-        # Check if the entry with the given title exists
-        entry = users.find_one(
-            {"server_id": str(ctx.guild.id), "author_id": str(ctx.author.id), "title": title}
-        )
+        # Check if the entry exists for the user in the current server
+        entry = users.find_one({
+            "server_id": str(ctx.guild.id),
+            "title": title
+        }, collation={"locale": "en", "strength": 2})  # Case-insensitive
 
-        if entry:
-            # Update the username or password if provided
-            if username:
-                users.update_one(
-                    {"entry_id": entry['entry_id']},
-                    {"$set": {"username": username}}
-                )
-            if password:
-                users.update_one(
-                    {"entry_id": entry['entry_id']},
-                    {"$set": {"password": password}}
-                )
+        if not entry:
+            await ctx.send(f"@{ctx.author.name}, no data found for the title '{title}'. Please ensure the title is correct and stored.")
+            return
 
-            await ctx.send(f"Credentials for '{title}' have been updated successfully.")
-        else:
-            await ctx.send(f"No data found for the title '{title}' to update.")
+        # Check if the user is the one who stored the data
+        if entry["author_id"] != str(ctx.author.id):
+            await ctx.send(f"@{ctx.author.name}, only the user who stored the data can update it.")
+            return
 
+        # Ask for new username and password via DM
+        await ctx.author.send(f"To update data for the title '{title}', please provide the new username.")
+
+        def check_dm(msg):
+            return msg.author == ctx.author and isinstance(msg.channel, discord.DMChannel)
+
+        # Wait for the username in DM
+        username_msg = await bot.wait_for("message", check=check_dm, timeout=30.0)
+        new_username = username_msg.content
+
+        await ctx.author.send("Now, please provide the new password.")
+        password_msg = await bot.wait_for("message", check=check_dm, timeout=30.0)
+        new_password = password_msg.content
+
+        # Update the entry in MongoDB
+        updated_data = {
+            "$set": {
+                "username": new_username,
+                "password": new_password,
+                "timestamp": datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+            }
+        }
+        users.update_one({"_id": entry["_id"]}, updated_data)
+
+        await ctx.author.send(f"Your data for title '{title}' has been successfully updated!")
+        await ctx.send(f"@{ctx.author.name}, your data for '{title}' has been updated. Check your DMs for confirmation.")
+
+    except discord.errors.Forbidden:
+        await ctx.send("I couldn't send you a DM. Please enable DMs and try again.")
+    except discord.errors.TimeoutError:
+        await ctx.author.send("You took too long to respond. Please try the command again.")
     except Exception as e:
         await ctx.send(f"An error occurred while updating data: {str(e)}")
+
+
+
+
+
+
 
 
 #Fetch
 @bot.command()
 @has_role("bot access")
 async def fetch(ctx, title: str):
-    """Fetches data securely via DM and deletes the message after 1 minute."""
+    """Fetches data securely via DM for users with the 'bot access' role."""
     try:
-        # Fetch the entry from MongoDB for the specific server and user
+        # Fetch the entry from MongoDB for the specific server and title
         entry = users.find_one(
-            {"server_id": str(ctx.guild.id), "author_id": str(ctx.author.id), "title": title},
+            {"server_id": str(ctx.guild.id), "title": title},
             collation={"locale": "en", "strength": 2}  # Case-insensitive
         )
 
@@ -157,53 +204,32 @@ async def fetch(ctx, title: str):
 
             # Notify the user in the public channel
             notify_message = await ctx.send(
-                f"@{ctx.author.name}, the data for '{title}' has been sent to your DMs. It will be deleted in 5 minute."
+                f"@{ctx.author.name}, the data for '{title}' has been sent to your DMs. It will be deleted in 1 minute."
             )
 
-            # Wait for 5 minutes (300 seconds) before deleting the DM
-            await asyncio.sleep(300)
-            await message.delete()  # Delete the DM message
-
-            # Wait for an additional 1 minute (60 seconds)
+            # Wait for 1 minute (60 seconds) before deleting the DM
             await asyncio.sleep(60)
-
-            # Delete the notification message in the public channel after 7 minutes
-            await notify_message.delete()
-
+            await message.delete()  # Delete the DM message
+            await notify_message.delete()  # Delete the notification message in the public channel
         else:
-            await ctx.send(f"No data found for the title '{title}'.")
-
+            await ctx.send(f"No data found for the title '{title}'. Please ensure the title is correct and stored.")
     except discord.errors.Forbidden:
         await ctx.send("I couldn't send you a DM. Please enable DMs and try again.")
     except Exception as e:
         await ctx.send(f"An error occurred while fetching data: {str(e)}")
 
-# Command to delete a specific entry by title (role-protected)
-@bot.command()
-@has_role("bot access")
-async def delete(ctx, title: str):
-    server_id = str(ctx.guild.id)
-    author_id = str(ctx.author.id)
 
-    try:
-        # Allow only the author or admin to delete the data
-        entry = users.find_one({"server_id": server_id, "title": title})
-        if entry and (entry['author_id'] == author_id or ctx.author.guild_permissions.administrator):
-            result = users.delete_one({"server_id": server_id, "title": title})
-            if result.deleted_count > 0:
-                await ctx.send(f"Data with title '{title}' deleted successfully!")
-            else:
-                await ctx.send(f"No data found for title '{title}'.")
-        else:
-            await ctx.send("You do not have permission to delete this entry.")
-    except Exception as e:
-        await ctx.send(f"An error occurred while deleting data: {str(e)}")
 
 # Command to fetch all entries for the server (admin-only)
 @bot.command()
-@commands.has_permissions(administrator=True)
 async def fetch_all(ctx):
+    """Fetches all stored entries for the current server, restricted to admins, and sends them via DM."""
     server_id = str(ctx.guild.id)
+
+    # Check if the user has administrator permissions
+    if not ctx.author.guild_permissions.administrator:
+        await ctx.send(f"@{ctx.author.name}, you do not have the required permissions to use this command.")
+        return
 
     try:
         # Fetch all entries for the current server
@@ -212,24 +238,47 @@ async def fetch_all(ctx):
             response = "Stored entries:\n"
             for entry in entries:
                 author = entry.get('author', 'Unknown')
-                response += f"**Title:** {entry['title']}, **Username:** {entry['username']}, **Password:** {entry['password']}, **Timestamp:** {entry['timestamp']}, **Author:** {author}\n"
-            await ctx.send(response)
+                response += (
+                    f"**Title:** {entry['title']}\n"
+                    f"**Username:** {entry['username']}\n"
+                    f"**Password:** {entry['password']}\n"
+                    f"**Timestamp:** {entry['timestamp']}\n"
+                    f"**Author:** {author}\n\n"
+                )
+            
+            # Send the response in DM
+            dm_channel = await ctx.author.create_dm()
+            await dm_channel.send(response)
+            await ctx.send(f"@{ctx.author.name}, the stored entries have been sent to your DMs.")
         else:
             await ctx.send("No data has been stored in this server yet.")
+
+    except discord.errors.Forbidden:
+        await ctx.send("I couldn't send you a DM. Please enable DMs and try again.")
     except Exception as e:
         await ctx.send(f"An error occurred while fetching data: {str(e)}")
 
+
+
+
 # Command to delete all data in the server (admin-only)
 @bot.command()
-@commands.has_permissions(administrator=True)
 async def delete_all(ctx):
+    """Deletes all stored entries for the current server, restricted to admins."""
+    # Check if the user has administrator permissions
+    if not ctx.author.guild_permissions.administrator:
+        await ctx.send(f"@{ctx.author.name}, you do not have the required permissions to use this command.")
+        return
+
     server_id = str(ctx.guild.id)
 
     try:
+        # Delete all entries for the current server
         result = users.delete_many({"server_id": server_id})
         await ctx.send(f"All data in this server has been deleted. Total entries deleted: {result.deleted_count}")
     except Exception as e:
         await ctx.send(f"An error occurred while deleting all data: {str(e)}")
+
 #PURGE
 @bot.command()
 @commands.has_permissions(manage_messages=True)
