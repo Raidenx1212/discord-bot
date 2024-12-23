@@ -96,8 +96,6 @@ async def store(ctx, title: str):
         await ctx.send(f"@{ctx.author.name}, your data has been securely stored. Check your DMs for confirmation!")
     except discord.errors.Forbidden:
         await ctx.send("I couldn't send you a DM. Please enable DMs and try again.")
-    except discord.errors.TimeoutError:
-        await ctx.author.send("You took too long to respond. Please try the command again.")
     except Exception as e:
         await ctx.send(f"An error occurred while storing data: {str(e)}")
 
