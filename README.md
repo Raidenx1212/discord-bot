@@ -55,11 +55,7 @@ Follow these steps to set up and run the bot:
 
 Contributions are welcome! Feel free to submit a pull request or open an issue for suggestions and improvements.
 
-## License
 
-This project is licensed under the [MIT License](LICENSE).
-
----
 
 ### Author
 
