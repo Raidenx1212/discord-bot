@@ -204,11 +204,11 @@ async def fetch(ctx, title: str):
 
             # Notify the user in the public channel
             notify_message = await ctx.send(
-                f"@{ctx.author.name}, the data for '{title}' has been sent to your DMs. It will be deleted in 1 minute."
+                f"@{ctx.author.name}, the data for '{title}' has been sent to your DMs. It will be deleted in 5 minutes."
             )
 
             # Wait for 1 minute (60 seconds) before deleting the DM
-            await asyncio.sleep(60)
+            await asyncio.sleep(300)
             await message.delete()  # Delete the DM message
             await notify_message.delete()  # Delete the notification message in the public channel
         else:
