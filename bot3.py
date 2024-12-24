@@ -312,6 +312,45 @@ async def purge(ctx, limit: int = 100):
     except discord.HTTPException as e:
         await ctx.send(f"An error occurred while trying to purge messages: {str(e)}")
 
+#help 
+@bot.command()
+async def help(ctx):
+    """Provides a list of available commands and their usage."""
+    help_message = """
+**Bot Command List**
+
+1. **!store <title>**
+   - Store your data (username and password) securely. You'll be prompted to provide the username and password via DM.
+
+2. **!fetch <title>**
+   - Fetch your stored data for the given title. Data will be sent to your DM. Only accessible to users with the "bot access" role.
+
+3. **!update <title>**
+   - Update your stored data (username and password) for the given title. Only the user who stored the data can update it.
+
+4. **!delete <title>**
+   - Delete your stored data for the given title. Only the user who stored the data can delete it.
+
+5. **!fetch_all**
+   - Fetch all stored entries for the server. **Administrator-only command**. Data will be sent via DM.
+
+6. **!delete_all**
+   - Delete all stored entries in the server. **Administrator-only command**.
+
+7. **!purge**
+   - Deletes messages from the channel starting from the message you replied to. **Requires "Manage Messages" permission**.
+
+**Important Notes:**
+- Ensure you have the "bot access" role to use most commands.
+- Commands like `!fetch_all` and `!delete_all` are restricted to server administrators.
+- Data is stored securely and can only be accessed or modified by the user who stored it or server administrators (where applicable).
+- DMs must be enabled to use commands like `!store`, `!fetch`, or `!update`.
+
+For more help, contact the server admin or the bot creator!
+"""
+    await ctx.send(help_message)
+
+
 
         
 
